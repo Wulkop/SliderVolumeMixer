@@ -5,9 +5,7 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
-
-const char* ssid = "...";
-const char* password = "...";
+#include "WifiCredentials.h"
 
 WebServer server(80);
 
@@ -51,7 +49,7 @@ String CreateTableEntry(int sliderIndex)
                     "</td><td>" + String(pids[sliderIndex].getKd()) + "</td></tr>";
   return entry;
 }
-void handleRoot()
+void HandleRoot()
 {
   String websiteP1 = "<!doctype html><html lang=\"en\"><head><title>Windows Sound Mixer Interface</title><meta http-equiv=\"refresh\" content=\"1\"></head><body><table border=\"2\" cellpadding=\"5\"><tbody><tr><td>&nbsp;</td><td>&nbsp;Current Position</td><td>Target Position</td><td>Delta</td><td>Enabled</td><td>KP</td><td>KI</td><td>KD</td></tr>";
   String websiteP2 = "</tbody></table><p>&nbsp;</p></body></html>";
@@ -62,6 +60,23 @@ void handleRoot()
   }
   
   server.send(200, "text/html", websiteP1 + table + websiteP2);
+}
+void HandleUpdateFromComputer()
+{
+  if (server.hasArg("plain") == false)
+  {
+    Serial.println("No Args");
+  }
+  String body = server.arg("plain");
+  Serial.println(body);
+  deserializeJson(doc, body);
+
+  int sliderId = doc["channel"];
+  float value = doc["volume"];
+  value *= 4096.0f;
+  targetPositions[sliderId] = value;
+  reachedTargetPosition[sliderId] = false;
+  server.send(200, "text/plain", "");
 }
 void SetupWifi()
 {
@@ -130,11 +145,12 @@ void setup()
 
   SetupPins();
   SetupWifi();
-  SetupOTA()
+  SetupOTA();
 
   //Setup Server
 
-  server.on("/", handleRoot);
+  server.on("/", HandleRoot);
+  server.on("/update", HTTP_POST, HandleUpdateFromComputer);
   server.begin();
  
 }
