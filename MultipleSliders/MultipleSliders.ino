@@ -1,26 +1,31 @@
-#include <ArduinoJson.h>
+#include "ArduinoJson-v6.21.2.h"
 #include <PID.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
+#include <Ewma.h>
 #include "WifiCredentials.h"
 
 WebServer server(80);
+Ewma adcFilters[4] = {0.1, 0.1, 0.1, 0.1};
 
+//int touchPins[] = {32,33,14,13};
+int touchPins[] = {13,14,33,32};
 //int readPins[] = {35, 34, 39, 36};
 int readPins[] = {36, 39, 34, 35};
 int enablePins[] = {17, 19, 18, 5}; //Check
 int motorControlPins[] = {12,22, 4,16, 2,0, 27,26};
 
+int touchValues[] = {0,0,0,0};
 int currentPositions[] = {0,0,0,0};
 int targetPositions[] = {2048,2048,2048,2048};
 bool reachedTargetPosition[] = {true, true, true, true};
 
-int positionMinThreshold = 40;
+int positionMinThreshold = 50;
 
-const int freq = 20000;
+const int freq = 5000;
 const int resolution = 12; //Resolution 8, 10, 12, 15
 
 float kp = 0.5;
@@ -44,14 +49,19 @@ String CreateTableEntry(int sliderIndex)
                     "</td><td>" + String(targetPositions[sliderIndex]) + 
                     "</td><td>" + String(diff) + 
                     "</td><td><input type=\"checkbox\"" + checked +
-                    " onclick=\"return false;\"/></td><td>" + String(pids[sliderIndex].getKp()) + 
+                    " onclick=\"return false;\"/>" + 
+                    "</td><td>" + String(min(4096.0, max(-4096.0, pids[sliderIndex].getOutput()))) +
+                    "</td><td>" + String(pids[sliderIndex].getKp()) + 
                     "</td><td>" + String(pids[sliderIndex].getKi()) + 
-                    "</td><td>" + String(pids[sliderIndex].getKd()) + "</td></tr>";
+                    "</td><td>" + String(pids[sliderIndex].getKd()) + 
+                    "</td><td>" + String(touchValues[sliderIndex]) +
+                    
+                    "</td></tr>";
   return entry;
 }
 void HandleRoot()
 {
-  String websiteP1 = "<!doctype html><html lang=\"en\"><head><title>Windows Sound Mixer Interface</title><meta http-equiv=\"refresh\" content=\"1\"></head><body><table border=\"2\" cellpadding=\"5\"><tbody><tr><td>&nbsp;</td><td>&nbsp;Current Position</td><td>Target Position</td><td>Delta</td><td>Enabled</td><td>KP</td><td>KI</td><td>KD</td></tr>";
+  String websiteP1 = "<!doctype html><html lang=\"en\"><head><title>Windows Sound Mixer Interface</title><meta http-equiv=\"refresh\" content=\"1\"></head><body><table border=\"2\" cellpadding=\"5\"><tbody><tr><td>&nbsp;</td><td>&nbsp;Current Position</td><td>Target Position</td><td>Delta</td><td>Enabled</td><td>PID</td><td>KP</td><td>KI</td><td>KD</td><td>Touched</td></tr>";
   String websiteP2 = "</tbody></table><p>&nbsp;</p></body></html>";
   String table;
   for(int i = 0; i<4; ++i)
@@ -173,7 +183,8 @@ void mainLoop()
   
   for(int i = 0; i < 4; ++i)
   {
-    currentPositions[i] = analogRead(readPins[i]);
+    touchValues[i] = touchRead(touchPins[i]);
+    currentPositions[i] = adcFilters[i].filter(analogRead(readPins[i]));
     checkMotorMove(i);
   }
 }
